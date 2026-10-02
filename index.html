@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#8fd3ff">
+<title>ネコ・コープ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<!-- ゲーム中のHUD・操作 -->
+<button id="menuBtn" class="icon-btn" hidden aria-label="メニュー">☰</button>
+<div id="keysHint" hidden></div>
+<div id="controls" hidden>
+  <div id="pad"><div class="arrow l">◀</div><div class="arrow r">▶</div></div>
+  <div id="btns">
+    <div id="bGrab" class="btn grab">つかむ</div>
+    <div id="bJump" class="btn jump">ジャンプ</div>
+  </div>
+</div>
+
+<!-- タイトル -->
+<section id="scrTitle" class="screen">
+  <div class="card">
+    <h1 class="logo">ネコ<span>・</span>コープ<em>!</em></h1>
+    <p class="sub">スマホ2台で にゃんにゃん協力アクション</p>
+    <button class="big" id="btnHost">ルームを作る</button>
+    <button class="big alt" id="btnJoin">ルームに参加</button>
+    <button class="small" id="btnLocal">この端末で2人プレイ</button>
+    <details class="how">
+      <summary>あそびかた</summary>
+      <ul>
+        <li>黒猫(1P)と茶トラ(2P)で ゴールの<b>おさかな🐟</b>を目指そう</li>
+        <li><b>◀ ▶</b> 移動 ／ <b>ジャンプ</b> 跳ぶ</li>
+        <li><b>つかむ</b>（押しっぱなし）で相棒・箱・ロープ・黄色いペグをつかむ</li>
+        <li>ペグやロープをつかんだままジャンプすると大ジャンプ</li>
+        <li>高い壁は 相棒の頭に乗ったり、引っぱり上げたりして越えよう</li>
+      </ul>
+    </details>
+  </div>
+</section>
+
+<!-- ホスト待機 -->
+<section id="scrHost" class="screen" hidden>
+  <div class="card">
+    <h2>ルームを作成</h2>
+    <p class="note">相方に コードを伝えるか QR を読み取ってもらおう</p>
+    <div class="host-row">
+      <div id="roomCode" class="code">····</div>
+      <div id="qr"></div>
+    </div>
+    <div class="row">
+      <button class="small" id="btnShare" disabled>リンクを共有</button>
+      <button class="small" data-back>もどる</button>
+    </div>
+    <p class="status" id="hostStatus">準備中…</p>
+  </div>
+</section>
+
+<!-- 参加 -->
+<section id="scrJoin" class="screen" hidden>
+  <div class="card">
+    <h2>ルームに参加</h2>
+    <p class="note">相方の画面に出ている 4文字のコードを入力</p>
+    <input id="joinCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD">
+    <div class="row">
+      <button class="big" id="btnDoJoin">参加する</button>
+      <button class="small" data-back>もどる</button>
+    </div>
+    <p class="status" id="joinStatus"></p>
+  </div>
+</section>
+
+<!-- メニュー -->
+<section id="scrMenu" class="screen dim" hidden>
+  <div class="card">
+    <h2>メニュー</h2>
+    <button class="big" id="mClose">つづける</button>
+    <button class="big alt" id="mRestart">ステージをやり直す</button>
+    <button class="small" id="mTitle">タイトルへもどる</button>
+  </div>
+</section>
+
+<!-- メッセージ -->
+<section id="scrMsg" class="screen dim" hidden>
+  <div class="card">
+    <p id="msgText"></p>
+    <button class="big" id="msgOk">OK</button>
+  </div>
+</section>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="js/levels.js?v=4"></script>
+<script src="js/sim.js?v=4"></script>
+<script src="js/render.js?v=4"></script>
+<script src="js/input.js?v=4"></script>
+<script src="js/audio.js?v=4"></script>
+<script src="js/net.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
+</body>
+</html>
