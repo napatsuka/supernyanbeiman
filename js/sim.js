@@ -8,7 +8,8 @@ const BUNNY_W = 36, BUNNY_H = 60;
 const REACH = 56;           // つかめる距離（体の中心から）
 const GROUND_BOTTOM = 1700; // 地面の底
 
-const CAT_DEFAULT = 0x0001, CAT_ROPE = 0x0002;
+const CAT_DEFAULT = 0x0001, CAT_ROPE = 0x0002, CAT_SPIKE = 0x0004;
+const IMPALE_FRAMES = 150; // トゲに刺さっている時間（2.5秒）
 
 function wrapAngle(a) {
   a = (a + Math.PI) % (Math.PI * 2);
@@ -31,7 +32,15 @@ function buildLevel(idx) {
     statics.push(Bodies.rectangle(x1 + w / 2, top + h / 2, w, h, { isStatic: true, label: 'ground', friction: 0.8 }));
   }
   for (const [x1, x2, y] of L.spikes || []) {
-    statics.push(Bodies.rectangle((x1 + x2) / 2, y - 10, x2 - x1, 20, { isStatic: true, label: 'spike' }));
+    statics.push(Bodies.rectangle((x1 + x2) / 2, y - 10, x2 - x1, 20, { isStatic: true, label: 'spike', collisionFilter: { category: CAT_SPIKE } }));
+  }
+  // 細長いトゲ: [根元x, 地面y, 高さ, 半幅]
+  for (const [x, gy, h, w] of L.tallSpikes || []) {
+    statics.push(Body.create({
+      position: { x, y: gy - h / 3 }, // 三角形の重心
+      vertices: [{ x: x - w, y: gy }, { x, y: gy - h }, { x: x + w, y: gy }],
+      isStatic: true, label: 'spike', collisionFilter: { category: CAT_SPIKE },
+    }));
   }
   for (const [x, y] of L.pegs || []) {
     const p = Bodies.circle(x, y, 9, { isStatic: true, isSensor: true, label: 'peg' });
@@ -48,7 +57,7 @@ function buildLevel(idx) {
     const b = {
       id, body, facing: id ? -1 : 1, coyote: 0, jumpBuf: 0, jumpCd: 0, jumping: false,
       grab: null, grabCd: 0, lastGrab: null, lastGrabT: 0,
-      touching: false, groundBody: null, hitSpike: false, lastJc: null,
+      touching: false, groundBody: null, hitSpike: null, impaled: 0, lastJc: null,
     };
     body.plugin.bunny = b;
     dyn.push({ kind: 'bunny', id, body });
@@ -144,7 +153,7 @@ class Sim {
       for (const [me, other] of [[A, B], [B, A]]) {
         const bn = me.plugin && me.plugin.bunny;
         if (!bn) continue;
-        if (other.label === 'spike') bn.hitSpike = true;
+        if (other.label === 'spike' && !bn.hitSpike) bn.hitSpike = pts.find(Boolean) || { x: me.position.x, y: me.position.y };
         for (const s of pts) {
           if (!s) continue;
           const dx = s.x - me.position.x, dy = s.y - me.position.y;
@@ -157,7 +166,7 @@ class Sim {
   step(inputs) {
     const lv = this.lv;
     for (const b of lv.bunnies) this.control(b, inputs[b.id] || { mask: 0, jc: 0 });
-    for (const b of lv.bunnies) { b.touching = false; b.groundBody = null; b.hitSpike = false; }
+    for (const b of lv.bunnies) { b.touching = false; b.groundBody = null; b.hitSpike = null; }
 
     Engine.update(lv.engine, STEP_MS);
 
@@ -183,7 +192,12 @@ class Sim {
         if (Math.hypot(pa.x - pb.x, pa.y - pb.y) > 90) this.releaseGrab(b);
       }
       if (b.lastGrabT > 0) b.lastGrabT--;
-      if (b.hitSpike || b.body.position.y > lv.L.killY) this.kill(b);
+      if (b.impaled) {
+        // 刺さったまま、ゆっくりトゲを滑り落ちる
+        if (b.impaled > IMPALE_FRAMES - 50) Body.setPosition(b.body, { x: b.body.position.x, y: b.body.position.y + 0.35 });
+        if (--b.impaled === 0) this.kill(b);
+      } else if (b.hitSpike) this.impale(b, b.hitSpike);
+      else if (b.body.position.y > lv.L.killY) this.kill(b);
     }
 
     // チェックポイント
@@ -216,6 +230,7 @@ class Sim {
 
   control(b, inp) {
     const body = b.body, m = inp.mask;
+    if (b.impaled) { b.lastJc = inp.jc; return; }
     if (inp.jc !== b.lastJc) { if (b.lastJc !== null) b.jumpBuf = 8; b.lastJc = inp.jc; }
     const dir = ((m & IN_R) ? 1 : 0) - ((m & IN_L) ? 1 : 0);
     if (dir) b.facing = dir;
@@ -312,8 +327,26 @@ class Sim {
     b.grab = null;
   }
 
+  // トゲに刺さる：その場に固定して、しばらくしてから復活
+  impale(b, p) {
+    const body = b.body;
+    this.releaseGrab(b);
+    const dx = p.x - body.position.x, dy = p.y - body.position.y, d = Math.hypot(dx, dy) || 1;
+    Body.setVelocity(body, { x: 0, y: 0 });
+    Body.setAngularVelocity(body, 0);
+    body.collisionFilter.mask = ~CAT_SPIKE;                               // トゲが体を貫通できるように
+    Body.setPosition(body, { x: body.position.x + dx / d * 10, y: body.position.y + dy / d * 10 }); // 深く刺さる
+    Body.setStatic(body, true);
+    b.impaled = IMPALE_FRAMES;
+    b.jumping = false;
+    this.events.push(['i', b.id, Math.round(p.x), Math.round(p.y)]);
+  }
+
   kill(b) {
     const lv = this.lv;
+    if (b.body.isStatic) Body.setStatic(b.body, false);
+    b.body.collisionFilter.mask = 0xFFFFFFFF;
+    b.impaled = 0;
     this.events.push(['d', b.id, Math.round(b.body.position.x), Math.round(Math.min(b.body.position.y, lv.L.killY))]);
     this.releaseGrab(b);
     for (const o of lv.bunnies) if (o.grab && o.grab.target === b.body) this.releaseGrab(o);
@@ -349,6 +382,7 @@ class Sim {
     return {
       t: 's', f: this.frame, L: lv.idx, ep: this.epoch, p, g,
       k: lv.bunnies.map(b => b.facing),
+      im: lv.bunnies.map(b => b.impaled),
       c: lv.cp,
       w: this.clearT > 0 ? (this.allClear ? 2 : 1) : 0,
       tm: this.totalFrames,

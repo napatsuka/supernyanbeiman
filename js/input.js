@@ -62,7 +62,10 @@ const Input = (() => {
     };
     button(document.getElementById('bJump'), 'jump', () => jc[2]++);
     button(document.getElementById('bGrab'), 'grab');
-    document.getElementById('controls').addEventListener('contextmenu', e => e.preventDefault());
+    const ctl = document.getElementById('controls');
+    ctl.addEventListener('contextmenu', e => e.preventDefault());
+    // タッチの既定動作（拡大・スクロール・長押しメニュー）を止める。pointer イベントはそのまま届く
+    for (const t of ['touchstart', 'touchmove', 'touchend']) ctl.addEventListener(t, e => e.preventDefault(), { passive: false });
   }
 
   return {

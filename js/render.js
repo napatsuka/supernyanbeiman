@@ -15,6 +15,8 @@ class Renderer {
     this.ctx = canvas.getContext('2d');
     this.cam = { x: 0, y: 300, z: 1, init: false };
     this.particles = [];
+    this.stains = [];     // トゲに残る血のあと
+    this.impaleAt = [null, null];
     this.ears = [0, 1].map(() => ({ a: 0, v: 0, prev: null }));
     this.banner = null;
     this.level = null;
@@ -24,8 +26,9 @@ class Renderer {
   }
 
   resize() {
+    if ((!innerWidth || !innerHeight) && this.W) return; // 非表示中などで一時的に 0 になる時は無視
     this.dpr = Math.min(2, devicePixelRatio || 1);
-    this.W = innerWidth; this.H = innerHeight;
+    this.W = innerWidth || 800; this.H = innerHeight || 450;
     this.cv.width = Math.round(this.W * this.dpr);
     this.cv.height = Math.round(this.H * this.dpr);
   }
@@ -34,6 +37,8 @@ class Renderer {
     this.level = lv;
     this.cam.init = false;
     this.particles = [];
+    this.stains = [];
+    this.impaleAt = [null, null];
     this.ears.forEach(e => { e.prev = null; e.a = 0; e.v = 0; });
     this.showBanner(`STAGE ${lv.idx + 1}`, lv.L.name, 2.2);
   }
@@ -59,9 +64,11 @@ class Renderer {
     const { x: cx, y: cy, z } = this.cam;
     const W = this.W, H = this.H, d = this.dpr;
 
-    this.drawBackground(ctx, cx, cy, z);
+    this.drawBackground(ctx, cx, cy, z, lv.L.theme);
 
-    ctx.setTransform(d * z, 0, 0, d * z, d * (W / 2 - cx * z), d * (H / 2 - cy * z));
+    let sx = 0, sy = 0;
+    if (this.shake > 0) { sx = (Math.random() - 0.5) * this.shake; sy = (Math.random() - 0.5) * this.shake; this.shake *= 0.85; if (this.shake < 0.3) this.shake = 0; }
+    ctx.setTransform(d * z, 0, 0, d * z, d * (W / 2 - cx * z + sx), d * (H / 2 - cy * z + sy));
     const view = { l: cx - W / 2 / z - 50, r: cx + W / 2 / z + 50, t: cy - H / 2 / z - 50, b: cy + H / 2 / z + 50 };
 
     this.drawAbyss(ctx, lv.L.killY, view);
@@ -71,6 +78,8 @@ class Renderer {
     for (const s of lv.L.seesaws || []) this.drawFulcrum(ctx, s, lv.L);
     for (const g of lv.L.ground) if (g[1] > view.l && g[0] < view.r) this.drawGround(ctx, g, view);
     for (const s of lv.L.spikes || []) this.drawSpikes(ctx, s);
+    for (const s of lv.L.tallSpikes || []) if (s[0] > view.l && s[0] < view.r) this.drawTallSpike(ctx, s);
+    this.drawStains(ctx);
     for (const p of lv.L.pegs || []) this.drawPeg(ctx, p);
 
     // 動く物体
@@ -90,7 +99,12 @@ class Renderer {
     // 猫
     const grabs = {};
     for (let i = 0; i < state.g.length; i += 5) grabs[state.g[i]] = state.g.slice(i + 1, i + 5);
-    for (const i of [1, 0]) this.drawCat(ctx, i, bun[i], state.k[i], grabs[i], i === localId, dt);
+    for (const i of [1, 0]) {
+      const im = state.im ? state.im[i] : 0;
+      this.drawCat(ctx, i, bun[i], state.k[i], grabs[i], i === localId, dt, im > 0);
+      if (im > 0) this.bleed(i, bun[i], dt);
+      else this.impaleAt[i] = null;
+    }
 
     this.drawParticles(ctx, dt);
 
@@ -108,7 +122,7 @@ class Renderer {
 
   updateCamera(bun, localId, dt) {
     const W = this.W, H = this.H, cam = this.cam;
-    const base = Math.min(W / 900, H / 520);
+    const base = H > W ? W / 560 : Math.min(W / 900, H / 520); // 縦画面は横幅基準で寄る
     const minZ = base * 0.6, maxZ = base * 1.05;
     const dx = Math.abs(bun[0].x - bun[1].x) + 320, dy = Math.abs(bun[0].y - bun[1].y) + 300;
     const fitZ = Math.min(W / dx, H / dy);
@@ -126,7 +140,7 @@ class Renderer {
     cam.x += (tx - cam.x) * f; cam.y += (ty - cam.y) * f; cam.z += (z - cam.z) * f * 0.6;
   }
 
-  drawBackground(ctx, cx, cy, z) {
+  drawBackground(ctx, cx, cy, z, theme) {
     const W = this.W, H = this.H, d = this.dpr;
     ctx.setTransform(d, 0, 0, d, 0, 0);
     const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -159,6 +173,30 @@ class Renderer {
         ctx.lineTo(x, H * hy - yoff - Math.sin(wx * freq) * amp - Math.sin(wx * freq * 2.3 + 1) * amp * 0.4);
       }
       ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    }
+    if (theme === 'forest') this.drawForest(ctx, cx, cy, z);
+  }
+
+  // 森の背景（木のシルエット）
+  drawForest(ctx, cx, cy, z) {
+    const W = this.W, H = this.H;
+    ctx.fillStyle = 'rgba(20,70,40,.35)';
+    ctx.fillRect(0, 0, W, H);
+    for (const [par, trunk, leaf, gap, size] of [[0.35, '#3d5a3a', '#2f6b3f', 170, 0.8], [0.55, '#4a3628', '#1f5a32', 230, 1.15]]) {
+      const off = cx * par * z, base = H * 0.86 - (cy - 300) * par * 0.4 * z;
+      const first = Math.floor((off - 100) / gap);
+      for (let i = first; i * gap - off < W + 100; i++) {
+        const x = i * gap - off + ((i * 73) % 50);
+        const h = (220 + ((i * 131) % 90)) * size;
+        ctx.fillStyle = trunk;
+        ctx.fillRect(x - 9 * size, base - h, 18 * size, h + H);
+        ctx.fillStyle = leaf;
+        ctx.beginPath();
+        ctx.ellipse(x, base - h, 70 * size, 60 * size, 0, 0, Math.PI * 2);
+        ctx.ellipse(x - 45 * size, base - h + 30 * size, 50 * size, 40 * size, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + 45 * size, base - h + 25 * size, 55 * size, 42 * size, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
@@ -204,6 +242,61 @@ class Renderer {
     ctx.beginPath();
     for (let x = x1; x < x2; x += 24) { ctx.moveTo(x, y); ctx.lineTo(x + 12, y - 24); ctx.lineTo(x + 24, y); }
     ctx.fill(); ctx.stroke();
+  }
+
+  drawTallSpike(ctx, [x, gy, h, w]) {
+    ctx.lineJoin = 'round';
+    // 左半分（明るい面）と右半分（影の面）
+    ctx.fillStyle = '#f3f2f6';
+    ctx.beginPath(); ctx.moveTo(x - w, gy); ctx.lineTo(x, gy - h); ctx.lineTo(x, gy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#b9bccb';
+    ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - h); ctx.lineTo(x + w, gy); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(x - w, gy + 2); ctx.lineTo(x, gy - h); ctx.lineTo(x + w, gy + 2); ctx.stroke();
+  }
+
+  // 刺さった所に血を残す
+  addStain(x, y) {
+    this.stains.push({ x, y, t: 0, len: 25 + Math.random() * 35 });
+    if (this.stains.length > 30) this.stains.shift();
+  }
+
+  drawStains(ctx) {
+    for (const s of this.stains) {
+      s.t = Math.min(1, s.t + 0.01);
+      ctx.fillStyle = '#b3121f';
+      ctx.beginPath(); ctx.ellipse(s.x, s.y, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+      // 垂れていく血
+      const L = s.len * s.t;
+      ctx.beginPath();
+      ctx.moveTo(s.x - 3, s.y); ctx.lineTo(s.x - 2, s.y + L); ctx.arc(s.x - 0.5, s.y + L, 2.6, Math.PI, 0, true); ctx.lineTo(s.x + 2, s.y);
+      ctx.fill();
+    }
+  }
+
+  // 刺さっている間、血がしたたる
+  bleed(id, b, dt) {
+    const at = this.impaleAt[id] || { x: b.x, y: b.y + 10 };
+    at.acc = (at.acc || 0) + dt;
+    while (at.acc > 70) {
+      at.acc -= 70;
+      this.particles.push({
+        x: at.x + (Math.random() - 0.5) * 8, y: at.y, vx: (Math.random() - 0.5) * 1.2, vy: Math.random() * 0.5,
+        life: 1, r: 2 + Math.random() * 2.5, color: Math.random() < 0.5 ? '#c8102e' : '#9e0b1d', flat: true,
+      });
+    }
+    this.impaleAt[id] = at;
+  }
+
+  // 刺さった瞬間の血しぶき
+  splatter(id, x, y) {
+    for (let i = 0; i < 26; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6, sp = 2 + Math.random() * 5;
+      this.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, r: 2 + Math.random() * 4, color: i % 3 ? '#c8102e' : '#8a0a18', flat: true });
+    }
+    this.addStain(x, y);
+    this.impaleAt[id] = { x, y };
+    this.shake = 8;
   }
 
   drawPeg(ctx, [x, y]) {
@@ -317,7 +410,7 @@ class Renderer {
     ctx.restore();
   }
 
-  drawCat(ctx, id, b, facing, grab, isLocal, dt) {
+  drawCat(ctx, id, b, facing, grab, isLocal, dt, hurt = false) {
     const col = CAT_COLORS[id];
     const sw = this.ears[id];
     // しっぽの揺れ（姿勢の変化から推定）
@@ -383,7 +476,18 @@ class Renderer {
     }
     // 目
     const fx = f * 4;
-    for (const side of [-1, 1]) {
+    if (hurt) {
+      ctx.strokeStyle = col.eye || INK; ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        const exx = fx + side * 7, eyy = -13;
+        ctx.moveTo(exx - 3.5, eyy - 3.5); ctx.lineTo(exx + 3.5, eyy + 3.5);
+        ctx.moveTo(exx + 3.5, eyy - 3.5); ctx.lineTo(exx - 3.5, eyy + 3.5);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    }
+    for (const side of hurt ? [] : [-1, 1]) {
       const exx = fx + side * 7, eyy = -13;
       if (col.eye) {
         ctx.fillStyle = col.eye;
@@ -449,7 +553,8 @@ class Renderer {
       if (p.life <= 0) continue;
       ctx.globalAlpha = Math.min(1, p.life * 1.5);
       ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (p.flat ? 1 : p.life), 0, Math.PI * 2); ctx.fill();
+      if (!p.flat) ctx.stroke();
     }
     ctx.globalAlpha = 1;
     this.particles = this.particles.filter(p => p.life > 0);

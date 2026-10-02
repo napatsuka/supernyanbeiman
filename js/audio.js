@@ -22,6 +22,10 @@ const Sfx = (() => {
     unlock,
     jump(big) { tone('sine', big ? 300 : 360, big ? 900 : 720, 0.16, 0.14); },
     grab() { tone('square', 520, 260, 0.06, 0.05); },
+    stab() {
+      tone('sawtooth', 900, 120, 0.09, 0.12);
+      tone('square', 160, 50, 0.3, 0.16, 0.02);
+    },
     die() { tone('triangle', 500, 80, 0.4, 0.18); },
     checkpoint() { [660, 880].forEach((f, i) => tone('sine', f, f, 0.12, 0.12, i * 0.09)); },
     clear() { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f * 1.01, 0.22, 0.14, i * 0.11)); },

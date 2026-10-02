@@ -75,6 +75,29 @@
     if (isTouch && innerHeight > innerWidth) setTimeout(() => toast('横向きにすると遊びやすいよ'), 3000);
   }
 
+  // ---------- ズーム防止（連打や2本指押しでブラウザが拡大しないように） ----------
+  const inScreen = e => e.target instanceof Element && !!e.target.closest('.screen, button');
+  let lastTouchEnd = 0;
+  document.addEventListener('touchstart', e => { if (e.touches.length > 1 && !inScreen(e)) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', e => { if (!inScreen(e) || e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTouchEnd < 350 && !inScreen(e)) e.preventDefault(); // ダブルタップ拡大
+    lastTouchEnd = now;
+  }, { passive: false });
+  for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, e => e.preventDefault());
+  document.addEventListener('dblclick', e => e.preventDefault());
+  // それでも拡大されてしまった時は等倍に戻す
+  const viewportMeta = document.querySelector('meta[name=viewport]');
+  const VP = 'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';
+  let vpFlip = false;
+  window.visualViewport?.addEventListener('resize', () => {
+    if (visualViewport.scale > 1.01 && document.activeElement?.tagName !== 'INPUT') {
+      vpFlip = !vpFlip;
+      viewportMeta.setAttribute('content', VP + (vpFlip ? ',minimum-scale=1' : ''));
+    }
+  });
+
   // ---------- ボタン ----------
   $('#btnLocal').onclick = () => { enterPlay(); startGame('local'); };
 
@@ -107,10 +130,15 @@
   };
 
   $('#btnJoin').onclick = () => { Sfx.unlock(); show('scrJoin'); $('#joinStatus').textContent = ''; setTimeout(() => $('#joinCode').focus(), 50); };
-  $('#joinCode').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
-  $('#joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnDoJoin').click(); });
+  // 入力中（IMEの変換中）に値を書き換えると文字が重複・消失するので、確定後にだけ整える
+  const normCode = v => v.replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  $('#joinCode').addEventListener('compositionend', e => { e.target.value = normCode(e.target.value); });
+  $('#joinCode').addEventListener('blur', e => { e.target.value = normCode(e.target.value); });
+  $('#joinCode').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) $('#btnDoJoin').click(); });
   $('#btnDoJoin').onclick = () => {
-    const code = $('#joinCode').value.trim().toUpperCase();
+    const code = normCode($('#joinCode').value);
+    $('#joinCode').value = code;
     if (code.length !== 4) { $('#joinStatus').textContent = '4文字のコードを入れてね'; return; }
     Sfx.unlock();
     $('#joinCode').blur();
@@ -199,6 +227,10 @@
         if (!quiet) Sfx.jump(ev[2]);
         break;
       case 'g': if (!quiet) Sfx.grab(); break;
+      case 'i':
+        renderer.splatter(ev[1], ev[2], ev[3]);
+        if (!quiet) { Sfx.stab(); if (navigator.vibrate) navigator.vibrate([40, 30, 60]); }
+        break;
       case 'd':
         renderer.burst(ev[2], ev[3] - 20, CAT_COLORS[ev[1]].puff, 18, 5);
         if (!quiet) Sfx.die();
@@ -285,7 +317,7 @@
   }
 
   // ---------- 起動 ----------
-  window.__bunny = { get sim() { return sim; }, get mode() { return mode; } }; // デバッグ用
+  window.__bunny = { get sim() { return sim; }, get mode() { return mode; }, renderer }; // デバッグ用
   setGameUi(false);
   const room = new URLSearchParams(location.search).get('room');
   if (room) {

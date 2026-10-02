@@ -12,7 +12,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html, body {
-  margin: 0; height: 100%; overflow: hidden;
+  margin: 0; height: 100%; overflow: hidden; touch-action: none;
   background: var(--sky);
   font-family: var(--font);
   color: var(--ink);
@@ -27,7 +27,7 @@ html, body {
 
 /* ---------- 画面（タイトル等） ---------- */
 .screen {
-  position: fixed; inset: 0;
+  position: fixed; inset: 0; touch-action: pan-y;
   display: flex; align-items: center; justify-content: center;
   padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
   overflow-y: auto;
