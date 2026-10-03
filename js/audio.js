@@ -22,6 +22,7 @@ const Sfx = (() => {
     unlock,
     jump(big) { tone('sine', big ? 300 : 360, big ? 900 : 720, 0.16, 0.14); },
     grab() { tone('square', 520, 260, 0.06, 0.05); },
+    rattle() { for (let i = 0; i < 3; i++) tone('square', 300 + i * 40, 280 + i * 40, 0.05, 0.05, i * 0.07); },
     stab() {
       tone('sawtooth', 900, 120, 0.09, 0.12);
       tone('square', 160, 50, 0.3, 0.16, 0.02);

@@ -1,7 +1,7 @@
 'use strict';
 // 入力（タッチ＋キーボード）。プレイヤー別に {mask, jc} を返す。jc はジャンプを押した回数。
 const Input = (() => {
-  const touch = { dir: 0, jump: false, up: false, grab: false };
+  const touch = { dir: 0, jump: false, up: false, grab: false, latchDir: 0, latchUntil: 0 };
   const keys = new Set();
   const jc = [0, 0, 0]; // [キー1組目, キー2組目, タッチ]
 
@@ -25,7 +25,9 @@ const Input = (() => {
     return (has(s.l) ? IN_L : 0) | (has(s.r) ? IN_R : 0) | (has(s.j) ? IN_J : 0) | (has(s.g) ? IN_G : 0);
   }
   function touchMask() {
-    return (touch.dir < 0 ? IN_L : 0) | (touch.dir > 0 ? IN_R : 0) | (touch.jump || touch.up ? IN_J : 0) | (touch.grab ? IN_G : 0);
+    // 斜めジャンプは短いタップでも向きが伝わるよう、少しの間だけ向きを保持する
+    const dir = touch.dir || (performance.now() < touch.latchUntil ? touch.latchDir : 0);
+    return (dir < 0 ? IN_L : 0) | (dir > 0 ? IN_R : 0) | (touch.jump || touch.up ? IN_J : 0) | (touch.grab ? IN_G : 0);
   }
   function merge(...ms) {
     let m = ms.reduce((a, b) => a | b, 0);
@@ -34,19 +36,30 @@ const Input = (() => {
   }
 
   function setupTouch() {
+    // 十字キー：上の段 = ジャンプ（左上・右上は斜めジャンプ）、下の段 = 左右移動。指をすべらせてもOK
     const pad = document.getElementById('pad');
-    const arrows = pad.querySelectorAll('.arrow');
+    const cells = {};
+    pad.querySelectorAll('.arrow').forEach(el => { cells[el.dataset.c] = el; });
     const ptrs = new Map();
     const update = () => {
-      const r = pad.getBoundingClientRect(), mid = r.left + r.width / 2;
-      let dir = 0;
-      for (const x of ptrs.values()) dir = x < mid ? -1 : 1;
-      touch.dir = dir;
-      arrows[0].classList.toggle('on', dir < 0);
-      arrows[1].classList.toggle('on', dir > 0);
+      const r = pad.getBoundingClientRect();
+      let dir = 0, up = false;
+      for (const [x, y] of ptrs.values()) {
+        const col = x < r.left + r.width / 3 ? -1 : x > r.right - r.width / 3 ? 1 : 0;
+        const top = y < r.top + r.height * 0.44;
+        if (col) dir = col;
+        if (top) up = true;
+      }
+      if (up && !touch.up) {   // 上に入った瞬間にジャンプ
+        jc[2]++;
+        if (dir) { touch.latchDir = dir; touch.latchUntil = performance.now() + 250; }
+      }
+      touch.dir = dir; touch.up = up;
+      const on = { ul: up && dir < 0, u: up && !dir, ur: up && dir > 0, l: !up && dir < 0, r: !up && dir > 0 };
+      for (const k in cells) cells[k].classList.toggle('on', !!on[k]);
     };
-    pad.addEventListener('pointerdown', e => { e.preventDefault(); pad.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, e.clientX); update(); });
-    pad.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) { ptrs.set(e.pointerId, e.clientX); update(); } });
+    pad.addEventListener('pointerdown', e => { e.preventDefault(); pad.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); update(); });
+    pad.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) { ptrs.set(e.pointerId, [e.clientX, e.clientY]); update(); } });
     for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(t, e => { ptrs.delete(e.pointerId); update(); });
 
     const button = (el, key, onPress) => {
@@ -62,7 +75,6 @@ const Input = (() => {
     };
     button(document.getElementById('bJump'), 'jump', () => jc[2]++);
     button(document.getElementById('bGrab'), 'grab');
-    button(document.getElementById('bUp'), 'up', () => jc[2]++); // ▲でもジャンプ
     const ctl = document.getElementById('controls');
     ctl.addEventListener('contextmenu', e => e.preventDefault());
     // タッチの既定動作（拡大・スクロール・長押しメニュー）を止める。pointer イベントはそのまま届く

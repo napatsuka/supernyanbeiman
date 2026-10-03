@@ -81,6 +81,7 @@ class Renderer {
     for (const s of lv.L.tallSpikes || []) if (s[0] > view.l && s[0] < view.r) this.drawTallSpike(ctx, s);
     this.drawStains(ctx);
     for (const p of lv.L.pegs || []) this.drawPeg(ctx, p);
+    for (const d of lv.L.dropSpikes || []) this.drawDropHolder(ctx, d);
 
     // 動く物体
     let rope = [];
@@ -254,6 +255,15 @@ class Renderer {
     ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - h); ctx.lineTo(x + w, gy); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(x - w, gy + 2); ctx.lineTo(x, gy - h); ctx.lineTo(x + w, gy + 2); ctx.stroke();
+  }
+
+  // 落ちてくるトゲの吊り金具
+  drawDropHolder(ctx, [x, y]) {
+    const top = y - LOOSE_LEN / 3 - 10;
+    ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    ctx.fillStyle = '#8b8fa3';
+    ctx.beginPath(); ctx.roundRect(x - 20, top - 8, 40, 12, 5); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 14, top + 4); ctx.lineTo(x - 14, top + 12); ctx.moveTo(x + 14, top + 4); ctx.lineTo(x + 14, top + 12); ctx.stroke();
   }
 
   drawLooseSpike(ctx, x, y, a) {

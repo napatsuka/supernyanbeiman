@@ -227,6 +227,8 @@
         if (!quiet) Sfx.jump(ev[2]);
         break;
       case 'g': if (!quiet) Sfx.grab(); break;
+      case 'w': renderer.burst(ev[1], ev[2] - 40, '#c9b7a0', 5, 1.5); if (!quiet) Sfx.rattle(); break;
+      case 'r': renderer.burst(ev[1], ev[2], '#ffffff', 8, 2); break;
       case 'i':
         renderer.splatter(ev[1], ev[2], ev[3]);
         if (!quiet) { Sfx.stab(); if (navigator.vibrate) navigator.vibrate([40, 30, 60]); }
