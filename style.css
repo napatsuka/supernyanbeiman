@@ -116,7 +116,9 @@ button.small:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink)
   padding: 0 max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   --u: clamp(64px, 19vmin, 96px);
 }
-#pad, .btn { pointer-events: auto; touch-action: none; }
+#pad, .btn, #bUp { pointer-events: auto; touch-action: none; }
+#leftCtl { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.arrow.up { width: calc(var(--u) * 1.1); height: calc(var(--u) * .8); flex: none; }
 #pad {
   display: flex; gap: 8px; width: calc(var(--u) * 2.3); height: var(--u);
 }

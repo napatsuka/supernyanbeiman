@@ -93,6 +93,7 @@ class Renderer {
         rope.push({ x, y, a });
       } else if (dd.kind === 'crate') this.drawCrate(ctx, x, y, a, dd.w);
       else if (dd.kind === 'plank') this.drawPlank(ctx, x, y, a, dd.w, dd.h);
+      else if (dd.kind === 'loose') this.drawLooseSpike(ctx, x, y, a);
     });
     if (rope.length) this.drawRope(ctx, rope);
 
@@ -253,6 +254,22 @@ class Renderer {
     ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - h); ctx.lineTo(x + w, gy); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(x - w, gy + 2); ctx.lineTo(x, gy - h); ctx.lineTo(x + w, gy + 2); ctx.stroke();
+  }
+
+  drawLooseSpike(ctx, x, y, a) {
+    const L = LOOSE_LEN, w = LOOSE_W;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+    ctx.lineJoin = 'round';
+    ctx.fillStyle = '#f3f2f6';
+    ctx.beginPath(); ctx.moveTo(-w, L / 3); ctx.lineTo(0, -L * 2 / 3); ctx.lineTo(0, L / 3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#b9bccb';
+    ctx.beginPath(); ctx.moveTo(0, L / 3); ctx.lineTo(0, -L * 2 / 3); ctx.lineTo(w, L / 3); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-w, L / 3); ctx.lineTo(0, -L * 2 / 3); ctx.lineTo(w, L / 3); ctx.closePath(); ctx.stroke();
+    // 持ち手（根元の木の柄）
+    ctx.fillStyle = '#a8692b';
+    ctx.beginPath(); ctx.roundRect(-w - 1, L / 3 - 9, w * 2 + 2, 11, 3); ctx.fill(); ctx.stroke();
+    ctx.restore();
   }
 
   // 刺さった所に血を残す

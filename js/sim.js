@@ -9,7 +9,18 @@ const REACH = 56;           // つかめる距離（体の中心から）
 const GROUND_BOTTOM = 1700; // 地面の底
 
 const CAT_DEFAULT = 0x0001, CAT_ROPE = 0x0002, CAT_SPIKE = 0x0004;
-const IMPALE_FRAMES = 150; // トゲに刺さっている時間（2.5秒）
+const IMPALE_FRAMES = 150;
+const LOOSE_LEN = 96, LOOSE_W = 12; // 落ちているトゲの長さ・半幅
+
+// 落ちているトゲの先端（重心から一番遠い頂点）
+function spikeTip(body) {
+  let best = null, bd = -1;
+  for (const v of body.vertices) {
+    const d = (v.x - body.position.x) ** 2 + (v.y - body.position.y) ** 2;
+    if (d > bd) { bd = d; best = v; }
+  }
+  return best;
+} // トゲに刺さっている時間（2.5秒）
 
 function wrapAngle(a) {
   a = (a + Math.PI) % (Math.PI * 2);
@@ -83,6 +94,20 @@ function buildLevel(idx) {
       prev = s;
     }
   });
+  // 落ちているトゲ（持てる。先端に刺さるとアウト）: [x, 地面y, 向き(1=右/-1=左)]
+  for (const [x, gy, dir] of L.looseSpikes || []) {
+    const len = LOOSE_LEN, w = LOOSE_W;
+    const t = Body.create({
+      position: { x: 0, y: 0 },
+      vertices: [{ x: -w, y: len / 3 }, { x: 0, y: -len * 2 / 3 }, { x: w, y: len / 3 }],
+      density: 0.002, friction: 0.6, frictionAir: 0.01, label: 'looseSpike',
+      collisionFilter: { category: CAT_SPIKE },
+    });
+    Body.setAngle(t, dir < 0 ? -Math.PI / 2 : Math.PI / 2);
+    Body.setPosition(t, { x, y: gy - w - 2 });
+    dyn.push({ kind: 'loose', body: t });
+    grabbables.push(t);
+  }
   for (const [x, y, s] of L.crates || []) {
     const c = Bodies.rectangle(x, y, s, s, { chamfer: { radius: 4 }, density: 0.0012, friction: 0.8, label: 'crate' });
     dyn.push({ kind: 'crate', body: c, w: s, h: s });
@@ -154,6 +179,11 @@ class Sim {
         const bn = me.plugin && me.plugin.bunny;
         if (!bn) continue;
         if (other.label === 'spike' && !bn.hitSpike) bn.hitSpike = pts.find(Boolean) || { x: me.position.x, y: me.position.y };
+        // 落ちているトゲは先端に触れた時だけ刺さる（自分で持っているトゲは除く）
+        if (other.label === 'looseSpike' && !bn.hitSpike && !(bn.grab && bn.grab.target === other) && !other.isStatic) {
+          const tip = spikeTip(other);
+          if (pts.some(s => s && Math.hypot(s.x - tip.x, s.y - tip.y) < 12)) { bn.hitSpike = { x: tip.x, y: tip.y }; bn.hitBy = other; }
+        }
         for (const s of pts) {
           if (!s) continue;
           const dx = s.x - me.position.x, dy = s.y - me.position.y;
@@ -166,7 +196,7 @@ class Sim {
   step(inputs) {
     const lv = this.lv;
     for (const b of lv.bunnies) this.control(b, inputs[b.id] || { mask: 0, jc: 0 });
-    for (const b of lv.bunnies) { b.touching = false; b.groundBody = null; b.hitSpike = null; }
+    for (const b of lv.bunnies) { b.touching = false; b.groundBody = null; b.hitSpike = null; b.hitBy = null; }
 
     Engine.update(lv.engine, STEP_MS);
 
@@ -337,6 +367,14 @@ class Sim {
     body.collisionFilter.mask = ~CAT_SPIKE;                               // トゲが体を貫通できるように
     Body.setPosition(body, { x: body.position.x + dx / d * 10, y: body.position.y + dy / d * 10 }); // 深く刺さる
     Body.setStatic(body, true);
+    // 刺さったトゲも猫ごとその場に固定する
+    if (b.hitBy) {
+      const sp = b.hitBy;
+      for (const o of this.lv.bunnies) if (o.grab && o.grab.target === sp) this.releaseGrab(o);
+      Body.setVelocity(sp, { x: 0, y: 0 }); Body.setAngularVelocity(sp, 0);
+      Body.setStatic(sp, true);
+      b.stuckSpike = sp;
+    }
     b.impaled = IMPALE_FRAMES;
     b.jumping = false;
     this.events.push(['i', b.id, Math.round(p.x), Math.round(p.y)]);
@@ -345,6 +383,7 @@ class Sim {
   kill(b) {
     const lv = this.lv;
     if (b.body.isStatic) Body.setStatic(b.body, false);
+    if (b.stuckSpike) { Body.setStatic(b.stuckSpike, false); b.stuckSpike = null; }
     b.body.collisionFilter.mask = 0xFFFFFFFF;
     b.impaled = 0;
     this.events.push(['d', b.id, Math.round(b.body.position.x), Math.round(Math.min(b.body.position.y, lv.L.killY))]);

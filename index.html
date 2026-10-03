@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 <canvas id="cv"></canvas>
@@ -19,7 +19,10 @@
 <button id="menuBtn" class="icon-btn" hidden aria-label="メニュー">☰</button>
 <div id="keysHint" hidden></div>
 <div id="controls" hidden>
-  <div id="pad"><div class="arrow l">◀</div><div class="arrow r">▶</div></div>
+  <div id="leftCtl">
+    <div id="bUp" class="arrow up">▲</div>
+    <div id="pad"><div class="arrow l">◀</div><div class="arrow r">▶</div></div>
+  </div>
   <div id="btns">
     <div id="bGrab" class="btn grab">つかむ</div>
     <div id="bJump" class="btn jump">ジャンプ</div>
@@ -38,7 +41,7 @@
       <summary>あそびかた</summary>
       <ul>
         <li>黒猫(1P)と茶トラ(2P)で ゴールの<b>おさかな🐟</b>を目指そう</li>
-        <li><b>◀ ▶</b> 移動 ／ <b>ジャンプ</b> 跳ぶ</li>
+        <li><b>◀ ▶</b> 移動 ／ <b>▲</b> か <b>ジャンプ</b> で跳ぶ</li>
         <li><b>つかむ</b>（押しっぱなし）で相棒・箱・ロープ・黄色いペグをつかむ</li>
         <li>ペグをつかんだままジャンプで大ジャンプ、ロープからは横っ飛び</li>
         <li>高い壁は 相棒の頭に乗ったり、引っぱり上げたりして越えよう</li>
@@ -101,12 +104,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="js/levels.js?v=10"></script>
-<script src="js/sim.js?v=10"></script>
-<script src="js/render.js?v=10"></script>
-<script src="js/input.js?v=10"></script>
-<script src="js/audio.js?v=10"></script>
-<script src="js/net.js?v=10"></script>
-<script src="js/main.js?v=10"></script>
+<script src="js/levels.js?v=11"></script>
+<script src="js/sim.js?v=11"></script>
+<script src="js/render.js?v=11"></script>
+<script src="js/input.js?v=11"></script>
+<script src="js/audio.js?v=11"></script>
+<script src="js/net.js?v=11"></script>
+<script src="js/main.js?v=11"></script>
 </body>
 </html>
