@@ -2,22 +2,23 @@
 // 入力（タッチ＋キーボード）。プレイヤー別に {mask, jc, tc} を返す。jc / tc はジャンプ / 投げるを押した回数。
 // タッチ操作は画面上の操作セット（.controls）ごとに独立していて、1台で2人の時は左右に1セットずつ出す。
 const Input = (() => {
-  const newTouch = () => ({ dir: 0, jump: false, up: false, grab: false, throwOn: false, latchDir: 0, latchUntil: 0, jc: 0, tc: 0, throwable: false, throwEl: null });
+  const newTouch = () => ({ dir: 0, jump: false, up: false, grab: false, throwOn: false, latchDir: 0, latchUntil: 0, jc: 0, tc: 0, wc: 0, throwable: false, throwEl: null });
   const touches = [newTouch(), newTouch()];   // [1つ目の操作セット, 2つ目の操作セット]
   const keys = new Set();
   const jc = [0, 0];  // キーボード [1組目, 2組目] のジャンプ回数
   const tcs = [0, 0]; // キーボード [1組目, 2組目] の投げる回数
+  const wcs = [0, 0]; // キーボード [1組目, 2組目] のワープ回数
 
   const SET = [
-    { l: ['KeyA'], r: ['KeyD'], j: ['KeyW', 'Space'], g: ['KeyS', 'ShiftLeft'], t: ['KeyE'] },
-    { l: ['ArrowLeft'], r: ['ArrowRight'], j: ['ArrowUp'], g: ['ArrowDown', 'ShiftRight', 'Slash'], t: ['Period', 'Numpad0', 'Enter'] },
+    { l: ['KeyA'], r: ['KeyD'], j: ['KeyW', 'Space'], g: ['KeyS', 'ShiftLeft'], t: ['KeyE'], w: ['KeyQ'] },
+    { l: ['ArrowLeft'], r: ['ArrowRight'], j: ['ArrowUp'], g: ['ArrowDown', 'ShiftRight', 'Slash'], t: ['Period', 'Numpad0', 'Enter'], w: ['KeyP', 'Numpad1'] },
   ];
-  const allCodes = new Set(SET.flatMap(s => [...s.l, ...s.r, ...s.j, ...s.g, ...s.t]));
+  const allCodes = new Set(SET.flatMap(s => [...s.l, ...s.r, ...s.j, ...s.g, ...s.t, ...s.w]));
 
   addEventListener('keydown', e => {
     if (!allCodes.has(e.code) || document.activeElement?.tagName === 'INPUT') return;
     e.preventDefault();
-    if (!e.repeat) SET.forEach((s, i) => { if (s.j.includes(e.code)) jc[i]++; if (s.t.includes(e.code)) tcs[i]++; });
+    if (!e.repeat) SET.forEach((s, i) => { if (s.j.includes(e.code)) jc[i]++; if (s.t.includes(e.code)) tcs[i]++; if (s.w.includes(e.code)) wcs[i]++; });
     keys.add(e.code);
   });
   addEventListener('keyup', e => keys.delete(e.code));
@@ -85,6 +86,7 @@ const Input = (() => {
     };
     button(root.querySelector('.btn.jump'), 'jump', () => touch.jc++);
     button(root.querySelector('.btn.grab'), 'grab');
+    button(root.querySelector('.warp'), 'warpOn', () => touch.wc++);
     root.addEventListener('contextmenu', e => e.preventDefault());
     // タッチの既定動作（拡大・スクロール・長押しメニュー）を止める。pointer イベントはそのまま届く
     for (const t of ['touchstart', 'touchmove', 'touchend']) root.addEventListener(t, e => e.preventDefault(), { passive: false });
@@ -103,7 +105,7 @@ const Input = (() => {
     },
     // 1台で2人：P1 = キー1組目＋左の操作セット、P2 = キー2組目＋右の操作セット
     local2p() {
-      return [0, 1].map(p => ({ mask: merge(keyMask(p), touchMask(p)), jc: jc[p] + touches[p].jc, tc: tcs[p] + touches[p].tc }));
+      return [0, 1].map(p => ({ mask: merge(keyMask(p), touchMask(p)), jc: jc[p] + touches[p].jc, tc: tcs[p] + touches[p].tc, wc: wcs[p] + touches[p].wc }));
     },
     // オンライン：自分1人分（すべての入力をまとめる）
     single() {
@@ -111,6 +113,7 @@ const Input = (() => {
         mask: merge(keyMask(0), keyMask(1), touchMask(0)),
         jc: jc[0] + jc[1] + touches[0].jc,
         tc: tcs[0] + tcs[1] + touches[0].tc,
+        wc: wcs[0] + wcs[1] + touches[0].wc,
       };
     },
   };

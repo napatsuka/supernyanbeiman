@@ -149,6 +149,16 @@ button.small:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink)
 .btn.grab { background: rgba(69,201,166,.6); margin-bottom: calc(var(--u) * .45); }
 .arrow.on, .btn.on { transform: scale(.92); background: rgba(255,255,255,.9); }
 .ptag { display: none; }
+/* 相棒へワープ（ジャンプボタンの上） */
+.warp {
+  position: absolute; pointer-events: auto; touch-action: none;
+  right: max(14px, env(safe-area-inset-right)); bottom: calc(var(--u) * 1.15 + max(14px, env(safe-area-inset-bottom)) + 12px);
+  padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 800; color: #fff;
+  background: rgba(123,92,255,.85); border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink);
+}
+.warp.on { transform: translateY(2px) scale(.94); box-shadow: 0 1px 0 var(--ink); }
+body.two-p .warp { right: 10px; font-size: 11px; padding: 4px 9px; }
+body.two-p #controls2 .warp { right: max(10px, env(safe-area-inset-right)); }
 
 /* 1台で2人：左半分が1P、右半分が2P */
 body.two-p .controls {

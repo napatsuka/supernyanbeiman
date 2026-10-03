@@ -72,8 +72,8 @@
     setGameUi(true);
     show(null);
     $('#keysHint').textContent = m === 'local'
-      ? '1P: A D 移動 / W ジャンプ / S つかむ / E 投げる　　2P: ← → 移動 / ↑ ジャンプ / ↓ つかむ / . 投げる'
-      : 'A D / ← → 移動　W / ↑ / Space ジャンプ　S / ↓ / Shift つかむ　E / Enter 投げる';
+      ? '1P: A D 移動 / W ジャンプ / S つかむ / E 投げる / Q ワープ　　2P: ← → / ↑ / ↓ / . 投げる / P ワープ'
+      : 'A D / ← → 移動　W / ↑ / Space ジャンプ　S / ↓ / Shift つかむ　E / Enter 投げる　Q 相棒へワープ';
     if (m !== 'local') toast(m === 'host' ? '相方が来た！ あなたは 1P（黒猫）' : 'つながった！ あなたは 2P（茶トラ）', 2800);
     if (isTouch && innerHeight > innerWidth) setTimeout(() => toast('横向きにすると遊びやすいよ'), 3000);
   }
@@ -172,7 +172,7 @@
     lastRecv = performance.now();
     if (!d || typeof d !== 'object') return;
     if (mode === 'host') {
-      if (d.t === 'i') remoteInput = { mask: d.m | 0, jc: d.j | 0, tc: d.k | 0 };
+      if (d.t === 'i') remoteInput = { mask: d.m | 0, jc: d.j | 0, tc: d.k | 0, wc: d.w | 0 };
       else if (d.t === 'r') { sim.restart(); toast('2P がステージをやり直しました'); }
     } else if (mode === 'client') {
       if (d.t === 's') client.onSnap(d);
@@ -216,9 +216,9 @@
     },
     sendInput(now) {
       const inp = Input.single();
-      const sig = inp.mask + ':' + inp.jc + ':' + inp.tc;
+      const sig = inp.mask + ':' + inp.jc + ':' + inp.tc + ':' + inp.wc;
       if (sig !== this.lastSent || now - this.lastSend > 150) {
-        Net.send({ t: 'i', m: inp.mask, j: inp.jc, k: inp.tc });
+        Net.send({ t: 'i', m: inp.mask, j: inp.jc, k: inp.tc, w: inp.wc });
         this.lastSent = sig; this.lastSend = now;
       }
     },
@@ -235,6 +235,11 @@
         break;
       case 'g': if (!quiet) Sfx.grab(); break;
       case 't': if (!quiet) Sfx.throw(); break;
+      case 'p':
+        renderer.burst(ev[2], ev[3], '#c9a6ff', 12, 3);
+        renderer.burst(ev[4], ev[5], '#c9a6ff', 14, 3);
+        if (!quiet) Sfx.warp();
+        break;
       case 'w': renderer.burst(ev[1], ev[2] - 40, '#c9b7a0', 5, 1.5); if (!quiet) Sfx.rattle(); break;
       case 'r': renderer.burst(ev[1], ev[2], '#ffffff', 8, 2); break;
       case 'i':

@@ -103,7 +103,10 @@ class Renderer {
     for (let i = 0; i < state.g.length; i += 5) grabs[state.g[i]] = state.g.slice(i + 1, i + 5);
     for (const i of [1, 0]) {
       const im = state.im ? state.im[i] : 0;
+      const blink = state.sf && state.sf[i] && Math.floor(this.time / 90) % 2 === 0;
+      if (blink) ctx.globalAlpha = 0.4;
       this.drawCat(ctx, i, bun[i], state.k[i], grabs[i], i === localId, dt, im > 0);
+      ctx.globalAlpha = 1;
       if (im > 0) this.bleed(i, bun[i], dt);
       else this.impaleAt[i] = null;
     }

@@ -10,6 +10,8 @@ const GROUND_BOTTOM = 1700; // 地面の底
 
 const CAT_DEFAULT = 0x0001, CAT_ROPE = 0x0002, CAT_SPIKE = 0x0004;
 const IMPALE_FRAMES = 150;
+const SAFE_FRAMES = 90;     // 復活・ワープ直後の無敵時間（1.5秒）
+const WARP_COOLDOWN = 60;
 const THROW_VX = 8.5, THROW_VY = -11.5;   // 投げる強さ
 const canThrow = t => !t.isStatic && (t.label === 'bunny' || t.label === 'crate' || t.label === 'looseSpike');
 const LOOSE_LEN = 96, LOOSE_W = 12; // 落ちているトゲの長さ・半幅
@@ -70,7 +72,7 @@ function buildLevel(idx) {
     const b = {
       id, body, facing: id ? -1 : 1, moveFacing: 1, coyote: 0, jumpBuf: 0, jumpCd: 0, jumping: false,
       grab: null, grabCd: 0, lastGrab: null, lastGrabT: 0,
-      touching: false, groundBody: null, hitSpike: null, impaled: 0, lastJc: null,
+      touching: false, groundBody: null, hitSpike: null, impaled: 0, lastJc: null, safeT: 0, warpCd: 0,
     };
     body.plugin.bunny = b;
     dyn.push({ kind: 'bunny', id, body });
@@ -140,7 +142,8 @@ function buildLevel(idx) {
   }
 
   Composite.add(world, [...statics, ...dyn.map(d => d.body), ...links]);
-  return { idx, L, engine, world, dyn, grabbables, bunnies, droppers, cp: 0 };
+  const hazards = [...statics.filter(b => b.label === 'spike'), ...droppers.map(d => d.body)];
+  return { idx, L, engine, world, dyn, grabbables, bunnies, droppers, hazards, cp: 0 };
 }
 
 function closestPointOnBody(body, p) {
@@ -222,6 +225,8 @@ class Sim {
 
     for (const b of lv.bunnies) {
       b.coyote = b.touching ? 6 : b.coyote - 1;
+      if (b.safeT > 0) b.safeT--;
+      if (b.warpCd > 0) b.warpCd--;
       if (b.grab) {
         const c = b.grab.c;
         c.length = Math.max(3, c.length * 0.88);
@@ -246,7 +251,7 @@ class Sim {
         // 刺さったまま、ゆっくりトゲを滑り落ちる
         if (b.impaled > IMPALE_FRAMES - 50) Body.setPosition(b.body, { x: b.body.position.x, y: b.body.position.y + 0.35 });
         if (--b.impaled === 0) this.kill(b);
-      } else if (b.hitSpike) this.impale(b, b.hitSpike);
+      } else if (b.hitSpike && b.safeT <= 0) this.impale(b, b.hitSpike);   // 復活・ワープ直後は無敵
       else if (b.body.position.y > lv.L.killY) this.kill(b);
     }
 
@@ -285,7 +290,7 @@ class Sim {
     for (const d of this.lv.droppers) {
       const body = d.body;
       if (d.state === 'idle') {
-        const near = this.lv.bunnies.some(b => !b.impaled && Math.abs(b.body.position.x - d.x) < d.range && b.body.position.y > d.y);
+        const near = this.lv.bunnies.some(b => !b.impaled && b.safeT <= 0 && Math.abs(b.body.position.x - d.x) < d.range && b.body.position.y > d.y);
         if (near) { d.state = 'warn'; d.t = 22; this.events.push(['w', Math.round(d.x), Math.round(d.y)]); }
       } else if (d.state === 'warn') {
         Body.setPosition(body, { x: d.x + ((d.t % 4) < 2 ? -2.5 : 2.5), y: d.y });
@@ -316,6 +321,8 @@ class Sim {
     const body = b.body, m = inp.mask;
     if (b.impaled) { b.lastJc = inp.jc; return; }
     if (inp.jc !== b.lastJc) { if (b.lastJc !== null) b.jumpBuf = 8; b.lastJc = inp.jc; }
+    const wc = inp.wc || 0;
+    if (wc !== b.lastWc) { if (b.lastWc != null) this.warp(b); b.lastWc = wc; }
     const tc = inp.tc || 0;
     if (tc !== b.lastTc) { if (b.lastTc != null) b.throwBuf = 6; b.lastTc = tc; }
     const dir = ((m & IN_R) ? 1 : 0) - ((m & IN_L) ? 1 : 0);
@@ -474,6 +481,34 @@ class Sim {
     this.events.push(['i', b.id, Math.round(p.x), Math.round(p.y)]);
   }
 
+  // トゲ・相棒と重ならない出現位置を探す（x だけずらす）
+  safeSpot(b, x0, y) {
+    const others = this.lv.bunnies.filter(o => o !== b).map(o => o.body);
+    const blockers = [...this.lv.hazards, ...others];
+    for (const dx of [0, 40, -40, 80, -80, 120, -120, 160, -160]) {
+      const x = x0 + dx;
+      const bounds = { min: { x: x - 24, y: y - 36 }, max: { x: x + 24, y: y + 60 } };
+      if (Matter.Query.region(blockers, bounds).length === 0) return x;
+    }
+    return x0;
+  }
+
+  // 相棒のところへワープ
+  warp(b) {
+    const o = this.lv.bunnies[1 - b.id];
+    if (b.impaled || o.impaled || b.warpCd > 0 || this.clearT > 0) return;
+    const from = { x: Math.round(b.body.position.x), y: Math.round(b.body.position.y) };
+    this.releaseGrab(b);
+    if (o.grab && o.grab.target === b.body) this.releaseGrab(o);
+    const p = o.body.position;
+    Body.setPosition(b.body, { x: p.x, y: p.y - 66 });   // 相棒の頭の上に出る
+    Body.setVelocity(b.body, { x: o.body.velocity.x, y: Math.min(0, o.body.velocity.y) });
+    Body.setAngle(b.body, 0);
+    Body.setAngularVelocity(b.body, 0);
+    b.safeT = 40; b.warpCd = WARP_COOLDOWN; b.jumping = false;
+    this.events.push(['p', b.id, from.x, from.y, Math.round(p.x), Math.round(p.y - 66)]);
+  }
+
   kill(b) {
     const lv = this.lv;
     if (b.body.isStatic) Body.setStatic(b.body, false);
@@ -484,11 +519,9 @@ class Sim {
     this.releaseGrab(b);
     for (const o of lv.bunnies) if (o.grab && o.grab.target === b.body) this.releaseGrab(o);
     const [cx, cy] = lv.L.checkpoints[lv.cp];
-    // 相棒と重ならないよう少しずらす
-    const other = lv.bunnies[1 - b.id].body.position;
-    let x = cx + (b.id ? 30 : -30);
-    if (Math.abs(other.x - x) < 40 && Math.abs(other.y - cy) < 60) x = other.x + (b.id ? 45 : -45);
+    const x = this.safeSpot(b, cx + (b.id ? 30 : -30), cy - 20);
     Body.setPosition(b.body, { x, y: cy - 20 });
+    b.safeT = SAFE_FRAMES;
     Body.setVelocity(b.body, { x: 0, y: 0 });
     Body.setAngle(b.body, 0);
     Body.setAngularVelocity(b.body, 0);
@@ -517,6 +550,7 @@ class Sim {
       k: lv.bunnies.map(b => b.facing),
       im: lv.bunnies.map(b => b.impaled),
       th: lv.bunnies.map(b => (b.grab && canThrow(b.grab.target)) ? 1 : 0),
+      sf: lv.bunnies.map(b => b.safeT > 0 && !b.impaled ? 1 : 0),
       c: lv.cp,
       w: this.clearT > 0 ? (this.allClear ? 2 : 1) : 0,
       tm: this.totalFrames,
