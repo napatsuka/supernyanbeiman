@@ -82,6 +82,7 @@ class Renderer {
     this.drawStains(ctx);
     for (const p of lv.L.pegs || []) this.drawPeg(ctx, p);
     for (const d of lv.L.dropSpikes || []) this.drawDropHolder(ctx, d);
+    this.drawGimmicksStatic(ctx, lv.L, state, dt);   // gimmick-draw.js
 
     // 動く物体
     let rope = [];
@@ -95,6 +96,7 @@ class Renderer {
       } else if (dd.kind === 'crate') this.drawCrate(ctx, x, y, a, dd.w);
       else if (dd.kind === 'plank') this.drawPlank(ctx, x, y, a, dd.w, dd.h);
       else if (dd.kind === 'loose') this.drawLooseSpike(ctx, x, y, a);
+      else this.drawGimmickBody(ctx, dd, x, y, a);   // gimmick-draw.js
     });
     if (rope.length) this.drawRope(ctx, rope);
 

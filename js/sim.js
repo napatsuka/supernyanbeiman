@@ -141,9 +141,13 @@ function buildLevel(idx) {
     grabbables.push(p);
   }
 
+  const gm = buildGimmicks(L, statics, dyn);   // スイッチ・扉・動く足場など（gimmicks.js）
+
   Composite.add(world, [...statics, ...dyn.map(d => d.body), ...links]);
-  const hazards = [...statics.filter(b => b.label === 'spike'), ...droppers.map(d => d.body)];
-  return { idx, L, engine, world, dyn, grabbables, bunnies, droppers, hazards, cp: 0 };
+  const hazards = [...statics.filter(b => b.label === 'spike'), ...droppers.map(d => d.body), ...gm.saws.map(s => s.body)];
+  // 動く足場で運ばれる・スイッチを押せる物
+  const carryables = dyn.filter(d => d.kind === 'bunny' || d.kind === 'crate' || d.kind === 'loose').map(d => d.body);
+  return { idx, L, engine, world, dyn, grabbables, bunnies, droppers, hazards, gm, carryables, cp: 0 };
 }
 
 function closestPointOnBody(body, p) {
@@ -184,6 +188,7 @@ class Sim {
     this.frame = 0;
     this.clearT = 0;
     this.allClear = false;
+    this.bounces = new Map();
     const onCol = e => this.onCollision(e);
     Events.on(this.lv.engine, 'collisionStart', onCol);
     Events.on(this.lv.engine, 'collisionActive', onCol);
@@ -198,6 +203,7 @@ class Sim {
       const A = pair.bodyA.parent, B = pair.bodyB.parent;
       const pts = pair.activeContacts ? pair.activeContacts.map(c => c.vertex) : (pair.collision.supports || []);
       for (const [me, other] of [[A, B], [B, A]]) {
+        if (e.name === 'collisionStart') this.checkTramp(me, other);
         const bn = me.plugin && me.plugin.bunny;
         if (!bn) continue;
         if (other.label === 'spike' && !bn.hitSpike) bn.hitSpike = pts.find(Boolean) || { x: me.position.x, y: me.position.y };
@@ -221,7 +227,9 @@ class Sim {
     for (const b of lv.bunnies) this.control(b, inputs[b.id] || { mask: 0, jc: 0 });
     for (const b of lv.bunnies) { b.touching = false; b.groundBody = null; b.hitSpike = null; b.hitBy = null; }
 
+    this.updateGimmicksPre();
     Engine.update(lv.engine, STEP_MS);
+    this.updateGimmicksPost();
 
     for (const b of lv.bunnies) {
       b.coyote = b.touching ? 6 : b.coyote - 1;
@@ -433,6 +441,7 @@ class Sim {
     else if (t.label !== 'bunny') Body.setPosition(t, { x: hx, y: hy });
     else Body.setPosition(t, { x: t.position.x + (hx - t.position.x) * 0.5, y: Math.min(t.position.y, hy) });
     Body.setVelocity(t, v);
+    t.plugin.thrownUntil = this.frame + 150;   // 投げられた物はトランポリンで高く跳ぶ
     if (t.label === 'looseSpike') {
       Body.setAngle(t, Math.atan2(v.x, -v.y));   // 先端を飛ぶ方向へ
       Body.setAngularVelocity(t, 0.02 * f);
@@ -551,6 +560,7 @@ class Sim {
       im: lv.bunnies.map(b => b.impaled),
       th: lv.bunnies.map(b => (b.grab && canThrow(b.grab.target)) ? 1 : 0),
       sf: lv.bunnies.map(b => b.safeT > 0 && !b.impaled ? 1 : 0),
+      sw: lv.gm.switches.map(s => s.pressed ? 1 : 0),
       c: lv.cp,
       w: this.clearT > 0 ? (this.allClear ? 2 : 1) : 0,
       tm: this.totalFrames,

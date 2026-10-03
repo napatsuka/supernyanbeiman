@@ -235,6 +235,15 @@
         break;
       case 'g': if (!quiet) Sfx.grab(); break;
       case 't': if (!quiet) Sfx.throw(); break;
+      case 'b':   // トランポリン
+        renderer.trampSquash = renderer.trampSquash || [];
+        renderer.trampSquash[ev[1]] = 1;
+        if (!quiet) Sfx.boing();
+        break;
+      case 's': if (!quiet) Sfx.click(ev[2]); break;   // スイッチ
+      case 'o': if (!quiet) Sfx.checkpoint(); break;     // 2人同時スイッチで扉が開いた
+      case 'k': renderer.burst(ev[1], ev[2] + 10, '#b9a68e', 6, 1.5); if (!quiet) Sfx.crack(); break;   // 崩れはじめ
+      case 'K': renderer.burst(ev[1], ev[2], '#ffffff', 8, 2); break;   // 崩れた足場が戻った
       case 'p':
         renderer.burst(ev[2], ev[3], '#c9a6ff', 12, 3);
         renderer.burst(ev[4], ev[5], '#c9a6ff', 14, 3);
