@@ -8,6 +8,7 @@
 
   // mode: 'demo'（タイトル背景） | 'local'（1台2人） | 'host' | 'client'
   let mode = 'demo';
+  let cpu = null;   // CPU の相棒（1台で遊ぶ時）
   let sim = new Sim(0);
   let remoteInput = { mask: 0, jc: 0 };
   let netEvents = [];
@@ -19,7 +20,7 @@
   }
   function setGameUi(on) {
     $('#menuBtn').hidden = !on;
-    const twoP = on && mode === 'local';
+    const twoP = on && mode === 'local' && !cpu;
     $('#controls').hidden = !(on && isTouch);
     $('#controls2').hidden = !(twoP && isTouch);   // 1台で2人の時は右半分に2P用の操作を出す
     document.body.classList.toggle('two-p', twoP && isTouch);
@@ -41,6 +42,7 @@
   function goTitle() {
     Net.close();
     mode = 'demo';
+    cpu = null; renderer.cpuId = -1;
     sim = new Sim(0);
     setGameUi(false);
     show('scrTitle');
@@ -62,8 +64,10 @@
     }
   });
 
-  function startGame(m) {
+  function startGame(m, withCpu = false) {
     mode = m;
+    cpu = withCpu ? new CpuBuddy(1) : null;
+    renderer.cpuId = cpu ? 1 : -1;
     netEvents = [];
     remoteInput = { mask: 0, jc: 0 };
     lastRecv = performance.now();
@@ -71,7 +75,7 @@
     client.reset();
     setGameUi(true);
     show(null);
-    $('#keysHint').textContent = m === 'local'
+    $('#keysHint').textContent = m === 'local' && !cpu
       ? '1P: A D 移動 / W ジャンプ / S つかむ / E 投げる / Q ワープ　　2P: ← → / ↑ / ↓ / . 投げる / P ワープ'
       : 'A D / ← → 移動　W / ↑ / Space ジャンプ　S / ↓ / Shift つかむ　E / Enter 投げる　Q 相棒へワープ';
     if (m !== 'local') toast(m === 'host' ? '相方が来た！ あなたは 1P（黒猫）' : 'つながった！ あなたは 2P（茶トラ）', 2800);
@@ -103,6 +107,7 @@
 
   // ---------- ボタン ----------
   $('#btnLocal').onclick = () => { enterPlay(); startGame('local'); };
+  $('#btnCpu').onclick = () => { enterPlay(); startGame('local', true); toast('2P（茶トラ）は CPU が動かします', 2600); };
 
   $('#btnHost').onclick = () => {
     Sfx.unlock();
@@ -159,7 +164,7 @@
   $('#mRestart').onclick = () => {
     show(null);
     if (mode === 'client') Net.send({ t: 'r' });
-    else sim.restart();
+    else { sim.restart(); if (cpu) cpu.reset(); }
   };
   $('#mTitle').onclick = goTitle;
   // BGM のON/OFF（メニューとタイトルの両方）
@@ -241,6 +246,19 @@
         if (!quiet) Sfx.boing();
         break;
       case 's': if (!quiet) Sfx.click(ev[2]); break;   // スイッチ
+      case 'f':   // 黒こげ
+        renderer.burst(ev[2], ev[3], '#ffb02e', 14, 4);
+        renderer.burst(ev[2], ev[3], '#5a555a', 10, 3);
+        if (!quiet) Sfx.burn();
+        break;
+      case 'F': if (!quiet && renderer.level && Math.abs(ev[1] - renderer.cam.x) < 700) Sfx.whoosh(); break;   // 炎が噴き出した
+      case 'a': renderer.burst(ev[1], ev[2], '#bfe6ff', 12, 3); if (!quiet) Sfx.splash(); break;   // 水に飛びこんだ
+      case 'N': if (!quiet) Sfx.click(1); break;   // 大砲に入った
+      case 'n':   // 大砲発射
+        renderer.burst(ev[1], ev[2], '#d8d4dc', 16, 4);
+        renderer.shake = 10;
+        if (!quiet) Sfx.boom();
+        break;
       case 'o': if (!quiet) Sfx.checkpoint(); break;     // 2人同時スイッチで扉が開いた
       case 'k': renderer.burst(ev[1], ev[2] + 10, '#b9a68e', 6, 1.5); if (!quiet) Sfx.crack(); break;   // 崩れはじめ
       case 'K': renderer.burst(ev[1], ev[2], '#ffffff', 8, 2); break;   // 崩れた足場が戻った
@@ -300,9 +318,9 @@
 
     if (renderer.level !== sim.lv) renderer.setLevel(sim.lv);
     const snap = sim.snapshot();
-    renderer.draw(snap, mode === 'host' ? 0 : -1, dt);
+    renderer.draw(snap, mode === 'host' || cpu ? 0 : -1, dt);
     Input.setThrowable(0, mode !== 'demo' && !!snap.th[0]);
-    Input.setThrowable(1, mode === 'local' && !!snap.th[1]);
+    Input.setThrowable(1, mode === 'local' && !cpu && !!snap.th[1]);
     if (mode === 'host') watchdog(now);
   }
 
@@ -315,7 +333,7 @@
     simLast = now;
     let n = 0;
     while (acc >= STEP_MS && n < 8) {
-      const inputs = mode === 'local' ? Input.local2p()
+      const inputs = mode === 'local' ? (cpu ? [Input.single(), cpu.input(sim)] : Input.local2p())
         : mode === 'host' ? [Input.single(), remoteInput]
         : demoInputs();
       sim.step(inputs);

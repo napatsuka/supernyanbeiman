@@ -73,6 +73,7 @@ function buildLevel(idx) {
       id, body, facing: id ? -1 : 1, moveFacing: 1, coyote: 0, jumpBuf: 0, jumpCd: 0, jumping: false,
       grab: null, grabCd: 0, lastGrab: null, lastGrabT: 0,
       touching: false, groundBody: null, hitSpike: null, impaled: 0, lastJc: null, safeT: 0, warpCd: 0,
+      inWater: false, waterTop: 0, cannon: null, cannonCd: 0, burnT: 0,
     };
     body.plugin.bunny = b;
     dyn.push({ kind: 'bunny', id, body });
@@ -259,6 +260,10 @@ class Sim {
         // 刺さったまま、ゆっくりトゲを滑り落ちる
         if (b.impaled > IMPALE_FRAMES - 50) Body.setPosition(b.body, { x: b.body.position.x, y: b.body.position.y + 0.35 });
         if (--b.impaled === 0) this.kill(b);
+      } else if (b.burnT) {
+        if (--b.burnT === 0 || b.body.position.y > lv.L.killY) this.kill(b);   // 黒こげ → 復活
+      } else if (b.cannon) {
+        // 大砲の中
       } else if (b.hitSpike && b.safeT <= 0) this.impale(b, b.hitSpike);   // 復活・ワープ直後は無敵
       else if (b.body.position.y > lv.L.killY) this.kill(b);
     }
@@ -327,7 +332,7 @@ class Sim {
 
   control(b, inp) {
     const body = b.body, m = inp.mask;
-    if (b.impaled) { b.lastJc = inp.jc; return; }
+    if (b.impaled || b.cannon || b.burnT) { b.lastJc = inp.jc; b.lastWc = inp.wc || 0; b.lastTc = inp.tc || 0; return; }
     if (inp.jc !== b.lastJc) { if (b.lastJc !== null) b.jumpBuf = 8; b.lastJc = inp.jc; }
     const wc = inp.wc || 0;
     if (wc !== b.lastWc) { if (b.lastWc != null) this.warp(b); b.lastWc = wc; }
@@ -340,7 +345,27 @@ class Sim {
     const a = wrapAngle(body.angle);
 
     if (!grounded) body.friction = 0;
-    if (b.grab && !grounded) {
+    const onIce = grounded && b.groundBody && b.groundBody.label === 'ice';
+    if (b.inWater) {
+      // 泳ぐ：ジャンプ長押しで浮き、離すとゆっくり沈む
+      vx += (dir * 2.8 - vx) * 0.12;
+      const up = (m & IN_J) ? -3 : 1.2;
+      vy += (up - vy) * ((m & IN_J) ? 0.18 : 0.06);
+      av += -a * 0.02 - av * 0.1;
+      body.friction = 0;
+      // 水面近くでジャンプを押していたら 飛び出す
+      if ((m & IN_J) && body.position.y < b.waterTop + 22 && b.jumpCd <= 0) {
+        vy = -8.8; b.jumpCd = 20; b.jumping = true;
+        this.events.push(['j', b.id, 0]);
+      }
+    } else if (onIce) {
+      // 氷：ゆっくりしか加速・減速できない
+      vx += dir * ICE_ACC;
+      if (!dir) vx *= 0.997;
+      vx = Math.max(-ICE_MAX, Math.min(ICE_MAX, vx));
+      body.friction = 0;
+      av += (dir * 0.1 - a) * 0.05 - av * 0.2;
+    } else if (b.grab && !grounded) {
       vx += dir * 0.17;          // ぶら下がり中は左右でゆらす
       av *= 0.97;
     } else if (grounded) {
@@ -363,9 +388,9 @@ class Sim {
         else { vy = -10.6; vx += dir * 2.5; }                         // ペグからは大ジャンプ
         b.jumpBuf = 0; b.jumpCd = 8; b.grabCd = 10; b.jumping = true;
         this.events.push(['j', b.id, 1]);
-      } else if (grounded) {
+      } else if (grounded && !b.inWater) {
         vy = -9.2;
-        if (dir) vx = dir * Math.max(Math.abs(vx), 4.6);   // 斜めジャンプ
+        if (dir && !onIce) vx = dir * Math.max(Math.abs(vx), 4.6);   // 斜めジャンプ（氷の上では勢いそのまま）
         const gb = b.groundBody;
         if (gb && !gb.isStatic) {
           const k = Math.min(1, body.mass / gb.mass) * 4;
@@ -407,6 +432,7 @@ class Sim {
     for (const t of this.lv.grabbables) {
       if (t === b.body) continue;
       if (t.label === 'looseSpike' && t.isStatic) continue; // 吊り下がり中・刺さっている最中のトゲ
+      if (t.plugin.bunny && t.plugin.bunny.cannon) continue; // 大砲の中
       if (b.lastGrabT > 0 && (t.plugin.group || t.id) === b.lastGrab) continue;
       if (Math.abs(t.position.x - p.x) > 400 || Math.abs(t.position.y - p.y) > 400) continue;
       const r = closestPointOnBody(t, p);
@@ -505,7 +531,7 @@ class Sim {
   // 相棒のところへワープ
   warp(b) {
     const o = this.lv.bunnies[1 - b.id];
-    if (b.impaled || o.impaled || b.warpCd > 0 || this.clearT > 0) return;
+    if (b.impaled || o.impaled || b.cannon || o.cannon || b.warpCd > 0 || this.clearT > 0) return;
     const from = { x: Math.round(b.body.position.x), y: Math.round(b.body.position.y) };
     this.releaseGrab(b);
     if (o.grab && o.grab.target === b.body) this.releaseGrab(o);
@@ -524,6 +550,7 @@ class Sim {
     if (b.stuckSpike) { Body.setStatic(b.stuckSpike, false); b.stuckSpike.plugin.stuck = false; b.stuckSpike = null; }
     b.body.collisionFilter.mask = 0xFFFFFFFF;
     b.impaled = 0;
+    b.burnT = 0;
     this.events.push(['d', b.id, Math.round(b.body.position.x), Math.round(Math.min(b.body.position.y, lv.L.killY))]);
     this.releaseGrab(b);
     for (const o of lv.bunnies) if (o.grab && o.grab.target === b.body) this.releaseGrab(o);
@@ -561,6 +588,10 @@ class Sim {
       th: lv.bunnies.map(b => (b.grab && canThrow(b.grab.target)) ? 1 : 0),
       sf: lv.bunnies.map(b => b.safeT > 0 && !b.impaled ? 1 : 0),
       sw: lv.gm.switches.map(s => s.pressed ? 1 : 0),
+      wd: lv.gm.winds.map(w => w.on ? 1 : 0),
+      cn: lv.bunnies.map(b => b.cannon ? 1 : 0),
+      bt: lv.bunnies.map(b => b.burnT ? 1 : 0),
+      fl: lv.gm.flames.map(f => f.state),
       c: lv.cp,
       w: this.clearT > 0 ? (this.allClear ? 2 : 1) : 0,
       tm: this.totalFrames,

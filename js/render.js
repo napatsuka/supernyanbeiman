@@ -1,6 +1,8 @@
 'use strict';
 // 描画（ホスト・クライアント共通。スナップショットの姿勢配列から描く）
 const INK = '#3a2a3f';
+// 黒こげの時の色
+const BURNT_COLORS = { fur: '#2b2523', paw: '#3a3330', inner: '#5a4038', belly: '#4a3d38', stripe: null, eye: null, line: '#8a7a70', tipColor: '#ff8c2e', tag: '#555', puff: '#555' };
 const CAT_COLORS = [
   // 1P: 黒猫
   { fur: '#2e2a33', paw: '#3b3641', inner: '#ff9fb8', belly: null, stripe: null, eye: '#ffd23f', line: '#9a93a3', tipColor: null, tag: '#7b5cff', puff: '#4a4452' },
@@ -83,6 +85,8 @@ class Renderer {
     for (const p of lv.L.pegs || []) this.drawPeg(ctx, p);
     for (const d of lv.L.dropSpikes || []) this.drawDropHolder(ctx, d);
     this.drawGimmicksStatic(ctx, lv.L, state, dt);   // gimmick-draw.js
+    this.drawEnvStatic(ctx, lv.L, state);
+    this.drawFlames(ctx, lv.L, state);
 
     // 動く物体
     let rope = [];
@@ -105,15 +109,19 @@ class Renderer {
     for (let i = 0; i < state.g.length; i += 5) grabs[state.g[i]] = state.g.slice(i + 1, i + 5);
     for (const i of [1, 0]) {
       const im = state.im ? state.im[i] : 0;
+      if (state.cn && state.cn[i]) continue;   // 大砲の中
       const blink = state.sf && state.sf[i] && Math.floor(this.time / 90) % 2 === 0;
       if (blink) ctx.globalAlpha = 0.4;
-      this.drawCat(ctx, i, bun[i], state.k[i], grabs[i], i === localId, dt, im > 0);
+      const burnt = state.bt && state.bt[i];
+      this.drawCat(ctx, i, bun[i], state.k[i], grabs[i], i === localId, dt, im > 0 || burnt, burnt);
+      if (burnt) this.smoke(i, bun[i], dt);
       ctx.globalAlpha = 1;
       if (im > 0) this.bleed(i, bun[i], dt);
       else this.impaleAt[i] = null;
     }
 
     this.drawParticles(ctx, dt);
+    this.drawWaterOverlay(ctx, lv.L);
 
     // 画面座標のHUD
     ctx.setTransform(d, 0, 0, d, 0, 0);
@@ -442,8 +450,8 @@ class Renderer {
     ctx.restore();
   }
 
-  drawCat(ctx, id, b, facing, grab, isLocal, dt, hurt = false) {
-    const col = CAT_COLORS[id];
+  drawCat(ctx, id, b, facing, grab, isLocal, dt, hurt = false, burnt = false) {
+    const col = burnt ? BURNT_COLORS : CAT_COLORS[id];
     const sw = this.ears[id];
     // しっぽの揺れ（姿勢の変化から推定）
     if (sw.prev && dt > 0) {
@@ -567,7 +575,7 @@ class Renderer {
     }
 
     // 名札
-    const label = isLocal ? 'YOU' : `${id + 1}P`;
+    const label = isLocal ? 'YOU' : id === this.cpuId ? 'CPU' : `${id + 1}P`;
     ctx.font = `800 13px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const tw = ctx.measureText(label).width + 12;
     const ly = b.y - 70;
@@ -575,6 +583,16 @@ class Renderer {
     ctx.beginPath(); ctx.roundRect(b.x - tw / 2, ly - 10, tw, 20, 10); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(b.x - 5, ly + 10); ctx.lineTo(b.x, ly + 16); ctx.lineTo(b.x + 5, ly + 10); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.fillText(label, b.x, ly + 1);
+  }
+
+  // 黒こげの間、煙と火の粉が出る
+  smoke(id, b, dt) {
+    this.smokeAcc = (this.smokeAcc || 0) + dt;
+    while (this.smokeAcc > 60) {
+      this.smokeAcc -= 60;
+      this.particles.push({ x: b.x + (Math.random() - 0.5) * 20, y: b.y - 20, vx: (Math.random() - 0.5) * 0.6, vy: -1.2 - Math.random(), life: 1, r: 5 + Math.random() * 5, color: 'rgba(90,85,90,.7)', flat: true });
+      if (Math.random() < 0.5) this.particles.push({ x: b.x + (Math.random() - 0.5) * 24, y: b.y, vx: (Math.random() - 0.5) * 2, vy: -2 - Math.random() * 2, life: 0.7, r: 2, color: '#ffb02e', flat: true });
+    }
   }
 
   drawParticles(ctx, dt) {

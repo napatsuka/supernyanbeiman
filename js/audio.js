@@ -28,6 +28,10 @@ const Sfx = (() => {
     boing() { tone('sine', 180, 620, 0.25, 0.16); tone('triangle', 360, 900, 0.18, 0.06, 0.03); },
     click(on) { tone('square', on ? 700 : 420, on ? 900 : 300, 0.06, 0.06); },
     crack() { for (let i = 0; i < 4; i++) tone('square', 160 - i * 20, 90, 0.04, 0.05, i * 0.05); },
+    splash() { tone('triangle', 500, 120, 0.25, 0.1); tone('sine', 900, 300, 0.15, 0.05, 0.04); },
+    boom() { tone('sawtooth', 120, 40, 0.45, 0.22); tone('square', 80, 30, 0.35, 0.12, 0.02); },
+    burn() { tone('sawtooth', 300, 60, 0.5, 0.14); tone('square', 900, 200, 0.2, 0.05, 0.05); },
+    whoosh() { tone('triangle', 120, 220, 0.25, 0.05); },
     stab() {
       tone('sawtooth', 900, 120, 0.09, 0.12);
       tone('square', 160, 50, 0.3, 0.16, 0.02);
