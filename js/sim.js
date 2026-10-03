@@ -10,6 +10,8 @@ const GROUND_BOTTOM = 1700; // 地面の底
 
 const CAT_DEFAULT = 0x0001, CAT_ROPE = 0x0002, CAT_SPIKE = 0x0004;
 const IMPALE_FRAMES = 150;
+const THROW_VX = 8.5, THROW_VY = -11.5;   // 投げる強さ
+const canThrow = t => !t.isStatic && (t.label === 'bunny' || t.label === 'crate' || t.label === 'looseSpike');
 const LOOSE_LEN = 96, LOOSE_W = 12; // 落ちているトゲの長さ・半幅
 
 // 落ちているトゲの先端（重心から一番遠い頂点）
@@ -66,7 +68,7 @@ function buildLevel(idx) {
       restitution: 0, frictionAir: 0.012, label: 'bunny',
     });
     const b = {
-      id, body, facing: id ? -1 : 1, coyote: 0, jumpBuf: 0, jumpCd: 0, jumping: false,
+      id, body, facing: id ? -1 : 1, moveFacing: 1, coyote: 0, jumpBuf: 0, jumpCd: 0, jumping: false,
       grab: null, grabCd: 0, lastGrab: null, lastGrabT: 0,
       touching: false, groundBody: null, hitSpike: null, impaled: 0, lastJc: null,
     };
@@ -197,7 +199,8 @@ class Sim {
         if (!bn) continue;
         if (other.label === 'spike' && !bn.hitSpike) bn.hitSpike = pts.find(Boolean) || { x: me.position.x, y: me.position.y };
         // 落ちているトゲは先端に触れた時だけ刺さる（自分で持っているトゲは除く）
-        if (other.label === 'looseSpike' && !bn.hitSpike && !(bn.grab && bn.grab.target === other) && !other.plugin.stuck) {
+        if (other.label === 'looseSpike' && !bn.hitSpike && !(bn.grab && bn.grab.target === other) && !other.plugin.stuck
+          && !(other.plugin.owner === bn.id && this.frame < other.plugin.ownerUntil)) {   // 投げた直後の本人には刺さらない
           const tip = spikeTip(other);
           if (pts.some(s => s && Math.hypot(s.x - tip.x, s.y - tip.y) < 12)) { bn.hitSpike = { x: tip.x, y: tip.y }; bn.hitBy = other; }
         }
@@ -313,8 +316,10 @@ class Sim {
     const body = b.body, m = inp.mask;
     if (b.impaled) { b.lastJc = inp.jc; return; }
     if (inp.jc !== b.lastJc) { if (b.lastJc !== null) b.jumpBuf = 8; b.lastJc = inp.jc; }
+    const tc = inp.tc || 0;
+    if (tc !== b.lastTc) { if (b.lastTc != null) b.throwBuf = 6; b.lastTc = tc; }
     const dir = ((m & IN_R) ? 1 : 0) - ((m & IN_L) ? 1 : 0);
-    if (dir) b.facing = dir;
+    if (dir) { b.facing = dir; b.moveFacing = dir; }   // moveFacing = 最後に歩いた向き（投げる方向）
     const grounded = b.coyote > 0 && b.jumpCd <= 0;
     let vx = body.velocity.x, vy = body.velocity.y, av = body.angularVelocity;
     const a = wrapAngle(body.angle);
@@ -365,6 +370,10 @@ class Sim {
     if (!(m & IN_G)) { if (b.grab) this.releaseGrab(b); }
     else if (!b.grab && b.grabCd <= 0) this.tryGrab(b);
     b.grabCd--;
+    if (b.throwBuf > 0) {
+      b.throwBuf--;
+      if (b.grab && canThrow(b.grab.target)) { this.throwHeld(b, dir); b.throwBuf = 0; }
+    }
     if (b.grab) {
       const tb = b.grab.c.bodyB, t = tb.position;
       if (Math.abs(t.x - body.position.x) > 4) b.facing = t.x > body.position.x ? 1 : -1;
@@ -400,6 +409,37 @@ class Sim {
     Composite.add(this.lv.world, c);
     b.grab = { c, target: bestT, slide: 0, canJump: bestT.label === 'peg' || bestT.label === 'rope' };
     this.events.push(['g', b.id]);
+  }
+
+  // つかんでいる物を投げる（相棒・箱・トゲ）
+  throwHeld(b, dir) {
+    const t = b.grab.target, body = b.body;
+    const f = dir || b.moveFacing || 1;
+    this.releaseGrab(b);
+    b.grabCd = 20;
+    const v = t.label === 'looseSpike'
+      ? { x: f * 12 + body.velocity.x * 0.4, y: -3.5 }               // トゲは低く鋭く
+      : { x: f * THROW_VX + body.velocity.x * 0.4, y: THROW_VY };
+    // 投げる物を自分の頭の少し前へ持ってきてから放る
+    const hx = body.position.x + f * 22, hy = body.position.y - 46;
+    if (t.label === 'looseSpike') Body.setPosition(t, { x: body.position.x + f * 34, y: body.position.y - 4 }); // トゲは胸の高さから
+    else if (t.label !== 'bunny') Body.setPosition(t, { x: hx, y: hy });
+    else Body.setPosition(t, { x: t.position.x + (hx - t.position.x) * 0.5, y: Math.min(t.position.y, hy) });
+    Body.setVelocity(t, v);
+    if (t.label === 'looseSpike') {
+      Body.setAngle(t, Math.atan2(v.x, -v.y));   // 先端を飛ぶ方向へ
+      Body.setAngularVelocity(t, 0.02 * f);
+      t.plugin.owner = b.id; t.plugin.ownerUntil = this.frame + 30;
+    } else {
+      Body.setAngularVelocity(t, 0.1 * f);
+    }
+    if (t.label === 'bunny') {
+      const ob = t.plugin.bunny;
+      ob.coyote = 0; ob.jumpCd = 14; ob.jumping = false;
+      if (ob.grab && ob.grab.target === body) this.releaseGrab(ob);   // 投げられた相棒がこちらをつかんでいたら離す
+    }
+    Body.setVelocity(body, { x: body.velocity.x - f * 1.2, y: body.velocity.y });
+    this.events.push(['t', b.id]);
   }
 
   releaseGrab(b) {
@@ -476,6 +516,7 @@ class Sim {
       t: 's', f: this.frame, L: lv.idx, ep: this.epoch, p, g,
       k: lv.bunnies.map(b => b.facing),
       im: lv.bunnies.map(b => b.impaled),
+      th: lv.bunnies.map(b => (b.grab && canThrow(b.grab.target)) ? 1 : 0),
       c: lv.cp,
       w: this.clearT > 0 ? (this.allClear ? 2 : 1) : 0,
       tm: this.totalFrames,

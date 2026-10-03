@@ -19,7 +19,10 @@
   }
   function setGameUi(on) {
     $('#menuBtn').hidden = !on;
+    const twoP = on && mode === 'local';
     $('#controls').hidden = !(on && isTouch);
+    $('#controls2').hidden = !(twoP && isTouch);   // 1台で2人の時は右半分に2P用の操作を出す
+    document.body.classList.toggle('two-p', twoP && isTouch);
     $('#keysHint').hidden = !(on && !isTouch);
     renderer.hud = on;
   }
@@ -69,8 +72,8 @@
     setGameUi(true);
     show(null);
     $('#keysHint').textContent = m === 'local'
-      ? '1P: A D 移動 / W ジャンプ / S つかむ　　2P: ← → 移動 / ↑ ジャンプ / ↓ つかむ'
-      : 'A D / ← → 移動　W / ↑ / Space ジャンプ　S / ↓ / Shift つかむ';
+      ? '1P: A D 移動 / W ジャンプ / S つかむ / E 投げる　　2P: ← → 移動 / ↑ ジャンプ / ↓ つかむ / . 投げる'
+      : 'A D / ← → 移動　W / ↑ / Space ジャンプ　S / ↓ / Shift つかむ　E / Enter 投げる';
     if (m !== 'local') toast(m === 'host' ? '相方が来た！ あなたは 1P（黒猫）' : 'つながった！ あなたは 2P（茶トラ）', 2800);
     if (isTouch && innerHeight > innerWidth) setTimeout(() => toast('横向きにすると遊びやすいよ'), 3000);
   }
@@ -159,13 +162,17 @@
     else sim.restart();
   };
   $('#mTitle').onclick = goTitle;
+  // BGM のON/OFF（メニューとタイトルの両方）
+  const syncBgm = () => { const t = 'BGM: ' + (Bgm.enabled ? 'ON' : 'OFF'); $('#mBgm').textContent = t; $('#tBgm').textContent = t; };
+  $('#mBgm').onclick = $('#tBgm').onclick = () => { Bgm.toggle(); syncBgm(); };
+  syncBgm();
 
   // ---------- ネットワーク ----------
   Net.onData = d => {
     lastRecv = performance.now();
     if (!d || typeof d !== 'object') return;
     if (mode === 'host') {
-      if (d.t === 'i') remoteInput = { mask: d.m | 0, jc: d.j | 0 };
+      if (d.t === 'i') remoteInput = { mask: d.m | 0, jc: d.j | 0, tc: d.k | 0 };
       else if (d.t === 'r') { sim.restart(); toast('2P がステージをやり直しました'); }
     } else if (mode === 'client') {
       if (d.t === 's') client.onSnap(d);
@@ -209,9 +216,9 @@
     },
     sendInput(now) {
       const inp = Input.single();
-      const sig = inp.mask + ':' + inp.jc;
+      const sig = inp.mask + ':' + inp.jc + ':' + inp.tc;
       if (sig !== this.lastSent || now - this.lastSend > 150) {
-        Net.send({ t: 'i', m: inp.mask, j: inp.jc });
+        Net.send({ t: 'i', m: inp.mask, j: inp.jc, k: inp.tc });
         this.lastSent = sig; this.lastSend = now;
       }
     },
@@ -227,6 +234,7 @@
         if (!quiet) Sfx.jump(ev[2]);
         break;
       case 'g': if (!quiet) Sfx.grab(); break;
+      case 't': if (!quiet) Sfx.throw(); break;
       case 'w': renderer.burst(ev[1], ev[2] - 40, '#c9b7a0', 5, 1.5); if (!quiet) Sfx.rattle(); break;
       case 'r': renderer.burst(ev[1], ev[2], '#ffffff', 8, 2); break;
       case 'i':
@@ -270,14 +278,17 @@
 
     if (mode === 'client') {
       const st = client.state(now);
-      if (st) renderer.draw(st, 1, dt);
+      if (st) { renderer.draw(st, 1, dt); Input.setThrowable(0, !!(st.th && st.th[1])); }
       else renderer.drawWaiting('ホストからのデータを待っています…');
       watchdog(now);
       return;
     }
 
     if (renderer.level !== sim.lv) renderer.setLevel(sim.lv);
-    renderer.draw(sim.snapshot(), mode === 'host' ? 0 : -1, dt);
+    const snap = sim.snapshot();
+    renderer.draw(snap, mode === 'host' ? 0 : -1, dt);
+    Input.setThrowable(0, mode !== 'demo' && !!snap.th[0]);
+    Input.setThrowable(1, mode === 'local' && !!snap.th[1]);
     if (mode === 'host') watchdog(now);
   }
 

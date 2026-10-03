@@ -110,18 +110,31 @@ button.small:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink)
   font-size: 12px; background: rgba(255,255,255,.8); border-radius: 10px; padding: 4px 10px; white-space: nowrap;
 }
 
-#controls {
+/* 操作セット（1人の時は画面全体、1台で2人の時は左右半分ずつ） */
+.controls {
   position: fixed; inset: auto 0 0 0; z-index: 4; pointer-events: none;
   display: flex; justify-content: space-between; align-items: flex-end;
   padding: 0 max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   --u: clamp(64px, 19vmin, 96px);
 }
-#pad, .btn { pointer-events: auto; touch-action: none; }
-#pad {
+#controls2 { inset: auto 0 0 50%; }
+.pad, .btn { pointer-events: auto; touch-action: none; }
+.pad {
   display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: .8fr 1fr; gap: 6px;
   width: calc(var(--u) * 2.6); height: calc(var(--u) * 1.75);
 }
-.pad-center { pointer-events: none; }
+.pad-center { pointer-events: none; display: flex; align-items: center; justify-content: center; }
+/* 投げるボタン（つかんでいる時だけ表示） */
+.throw {
+  width: 100%; height: 100%; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: calc(var(--u) * .19); color: #fff;
+  background: #ff8c2e; border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink);
+  opacity: 0; transform: scale(.4); transition: opacity .12s, transform .12s;
+}
+.throw.show { opacity: 1; transform: scale(1); animation: throwPulse 1s ease-in-out infinite; }
+.throw.on { transform: scale(.88); background: #ffb45e; animation: none; }
+@keyframes throwPulse { 50% { transform: scale(1.08); } }
 .arrow, .btn {
   display: flex; align-items: center; justify-content: center;
   border: 3px solid rgba(58,42,63,.75); color: var(--ink); font-weight: 800;
@@ -130,11 +143,31 @@ button.small:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink)
 }
 .arrow { border-radius: 18px; font-size: calc(var(--u) * .34); }
 .arrow[data-c=ul], .arrow[data-c=ur] { font-size: calc(var(--u) * .28); opacity: .85; }
-#btns { display: flex; gap: 12px; align-items: flex-end; }
+.btns { display: flex; gap: 12px; align-items: flex-end; }
 .btn { border-radius: 50%; width: var(--u); height: var(--u); font-size: calc(var(--u) * .2); }
 .btn.jump { width: calc(var(--u) * 1.15); height: calc(var(--u) * 1.15); background: rgba(255,122,168,.6); }
 .btn.grab { background: rgba(69,201,166,.6); margin-bottom: calc(var(--u) * .45); }
 .arrow.on, .btn.on { transform: scale(.92); background: rgba(255,255,255,.9); }
+.ptag { display: none; }
+
+/* 1台で2人：左半分が1P、右半分が2P */
+body.two-p .controls {
+  --u: clamp(40px, min(13vmin, calc((50vw - 70px) / 4.9)), 76px);
+  padding-left: max(10px, env(safe-area-inset-left)); padding-right: 10px;
+}
+body.two-p #controls { inset: auto 50% 0 0; }
+body.two-p #controls2 { padding-left: 10px; padding-right: max(10px, env(safe-area-inset-right)); }
+body.two-p .btns { gap: 8px; }
+body.two-p .ptag {
+  display: block; position: absolute; left: 50%; bottom: calc(var(--u) * 1.75 + 18px); transform: translateX(-50%);
+  font-size: 12px; font-weight: 800; color: #fff; padding: 2px 10px; border-radius: 999px;
+  border: 2px solid var(--ink); background: #7b5cff; white-space: nowrap;
+}
+body.two-p #controls2 .ptag { background: #ff8c2e; }
+body.two-p #controls2::before {
+  content: ''; position: absolute; left: 0; bottom: 12px; height: calc(var(--u) * 1.9);
+  border-left: 3px dashed rgba(58,42,63,.35);
+}
 
 #toast {
   position: fixed; z-index: 40; left: 50%; top: 16px; transform: translate(-50%, -150%);
